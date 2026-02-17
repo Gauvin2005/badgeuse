@@ -1,0 +1,306 @@
+<script lang="ts">
+  import { enhance } from '$app/forms';
+
+  let { data, form } = $props();
+
+  const role = $derived(data.role);
+  const pointages = $derived(data.pointages);
+  const absences = $derived(data.absences);
+  const absencesAll = $derived(data.absencesAll ?? data.absences);
+  const enCours = $derived(data.enCours);
+  const mois = $derived(data.mois);
+
+  function fmtDate(d: Date | number) {
+    const x = d instanceof Date ? d : new Date(d);
+    return x.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+  function fmtTime(d: Date | number) {
+    const x = d instanceof Date ? d : new Date(d);
+    return x.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+  function fmtDateTime(d: Date | number) {
+    return `${fmtDate(d)} ${fmtTime(d)}`;
+  }
+
+  const prevMois = $derived.by(() => {
+    const [y, m] = mois.split('-').map(Number);
+    const d = new Date(y, m - 2, 1);
+    return d.toISOString().slice(0, 7);
+  });
+  const nextMois = $derived.by(() => {
+    const [y, m] = mois.split('-').map(Number);
+    const d = new Date(y, m, 1);
+    return d.toISOString().slice(0, 7);
+  });
+  const moisLabel = $derived(
+    new Date(mois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+  );
+  const moisAujourdhui = $derived(new Date().toISOString().slice(0, 7));
+
+  let showAbsenceForm = $state(false);
+</script>
+
+<svelte:head>
+  <title>Tableau de bord - Badgeuse</title>
+</svelte:head>
+
+<div class="min-h-screen bg-slate-50">
+  <header class="bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center">
+    <h1 class="text-lg font-semibold text-slate-800">Badgeuse</h1>
+    <div class="flex items-center gap-4">
+      <span class="text-slate-600 text-sm capitalize">{role}</span>
+      <a href="/logout" class="text-slate-500 hover:text-slate-700 text-sm">Déconnexion</a>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto p-4 space-y-8">
+    {#if role === 'employe'}
+      <!-- Pointage -->
+      <section class="bg-white rounded-xl shadow p-6">
+        <h2 class="text-lg font-semibold text-slate-800 mb-4">Pointage</h2>
+        {#if enCours}
+          <p class="text-slate-600 mb-2">
+            Pointé depuis {fmtDateTime(enCours.arrivee)}
+          </p>
+          <form method="POST" action="?/depointer" use:enhance>
+            <button
+              type="submit"
+              class="px-6 py-3 bg-amber-500 text-white font-medium rounded-lg hover:bg-amber-600"
+            >
+              Se dépointer
+            </button>
+          </form>
+        {:else}
+          <form method="POST" action="?/pointer" use:enhance>
+            <button
+              type="submit"
+              class="px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700"
+            >
+              Se pointer
+            </button>
+          </form>
+        {/if}
+      </section>
+    {/if}
+
+    <!-- Filtre mois (patron + lien employe) -->
+    <section class="flex items-center gap-4 flex-wrap">
+      <span class="text-slate-700 font-medium">{moisLabel}</span>
+      <a
+        href="?mois={moisAujourdhui}"
+        class="px-3 py-1 rounded bg-slate-200 hover:bg-slate-300 text-sm"
+      >
+        Aujourd'hui
+      </a>
+      <a
+        href="?mois={prevMois}"
+        class="px-3 py-1 rounded bg-slate-200 hover:bg-slate-300 text-sm"
+      >
+        ← Mois précédent
+      </a>
+      <a
+        href="?mois={nextMois}"
+        class="px-3 py-1 rounded bg-slate-200 hover:bg-slate-300 text-sm"
+      >
+        Mois suivant →
+      </a>
+    </section>
+
+    <!-- Pointages -->
+    <section class="bg-white rounded-xl shadow p-6">
+      <h2 class="text-lg font-semibold text-slate-800 mb-4">Pointages</h2>
+      {#if pointages.length === 0}
+        <p class="text-slate-500">Aucun pointage sur cette période.</p>
+      {:else}
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-slate-200 text-left text-slate-600">
+                <th class="pb-2 pr-4">Date</th>
+                <th class="pb-2 pr-4">Arrivée</th>
+                <th class="pb-2 pr-4">Départ</th>
+                <th class="pb-2">Durée</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each pointages as p}
+                <tr class="border-b border-slate-100">
+                  <td class="py-2 pr-4">{fmtDate(p.arrivee)}</td>
+                  <td class="py-2 pr-4">{fmtTime(p.arrivee)}</td>
+                  <td class="py-2 pr-4">{p.depart ? fmtTime(p.depart) : '—'}</td>
+                  <td class="py-2">
+                    {p.dureeMinutes != null ? `${Math.floor(p.dureeMinutes / 60)}h${String(p.dureeMinutes % 60).padStart(2, '0')}` : '—'}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
+    </section>
+
+    <!-- Absences -->
+    <section class="bg-white rounded-xl shadow p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-semibold text-slate-800">Absences</h2>
+        {#if role === 'employe'}
+          <button
+            type="button"
+            onclick={() => (showAbsenceForm = !showAbsenceForm)}
+            class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+          >
+            {showAbsenceForm ? 'Annuler' : 'Nouvelle absence'}
+          </button>
+        {/if}
+      </div>
+
+      {#if role === 'employe' && showAbsenceForm}
+        <form
+          method="POST"
+          action="?/absence"
+          use:enhance={() => {
+            showAbsenceForm = false;
+            return {};
+          }}
+          class="mb-6 p-4 bg-slate-50 rounded-lg space-y-3"
+        >
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm text-slate-600 mb-1">Début</label>
+              <input
+                type="datetime-local"
+                name="debut"
+                required
+                class="w-full px-3 py-2 border border-slate-300 rounded"
+              />
+            </div>
+            <div>
+              <label class="block text-sm text-slate-600 mb-1">Fin</label>
+              <input
+                type="datetime-local"
+                name="fin"
+                required
+                class="w-full px-3 py-2 border border-slate-300 rounded"
+              />
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm text-slate-600 mb-1">Titre</label>
+            <input
+              type="text"
+              name="titre"
+              required
+              placeholder="ex. Congés"
+              class="w-full px-3 py-2 border border-slate-300 rounded"
+            />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-600 mb-1">Description</label>
+            <textarea
+              name="description"
+              rows="2"
+              class="w-full px-3 py-2 border border-slate-300 rounded"
+            ></textarea>
+          </div>
+          <div>
+            <label class="block text-sm text-slate-600 mb-1">Ma note</label>
+            <input
+              type="text"
+              name="noteEmploye"
+              placeholder="Optionnel"
+              class="w-full px-3 py-2 border border-slate-300 rounded"
+            />
+          </div>
+          <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            Enregistrer l'absence
+          </button>
+        </form>
+      {/if}
+
+      {#if absences.length === 0}
+        <p class="text-slate-500">Aucune absence sur cette période.</p>
+      {:else}
+        <div class="space-y-4">
+          {#each absences as a}
+            <div class="border border-slate-200 rounded-lg p-4">
+              <div class="flex justify-between items-start gap-4">
+                <div>
+                  <h3 class="font-medium text-slate-800">{a.titre}</h3>
+                  <p class="text-slate-600 text-sm mt-1">{a.description}</p>
+                  <p class="text-slate-500 text-sm mt-1">
+                    {fmtDateTime(a.debut)} → {fmtDateTime(a.fin)}
+                  </p>
+                  {#if a.noteEmploye}
+                    <p class="text-slate-500 text-sm mt-1"><em>Note : {a.noteEmploye}</em></p>
+                  {/if}
+                </div>
+                {#if role === 'patron'}
+                  <form
+                    method="POST"
+                    action="?/notePatron"
+                    use:enhance
+                    class="flex-1 max-w-xs"
+                  >
+                    <input type="hidden" name="id" value={a.id} />
+                    <label class="block text-sm text-slate-600 mb-1">Note patron</label>
+                    <div class="flex gap-2">
+                      <input
+                        type="text"
+                        name="notePatron"
+                        value={a.notePatron ?? ''}
+                        placeholder="Votre note"
+                        class="flex-1 px-3 py-2 border border-slate-300 rounded text-sm"
+                      />
+                      <button
+                        type="submit"
+                        class="px-3 py-2 bg-slate-600 text-white text-sm rounded hover:bg-slate-700"
+                      >
+                        OK
+                      </button>
+                    </div>
+                  </form>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
+
+    <!-- Calendrier (liste par jour du mois) -->
+    <section class="bg-white rounded-xl shadow p-6">
+      <h2 class="text-lg font-semibold text-slate-800 mb-4">Calendrier des absences</h2>
+      {#if mois}
+        {@const [y, m] = mois.split('-').map(Number)}
+        {@const daysInMonth = new Date(y, m, 0).getDate()}
+        <div class="grid grid-cols-7 gap-1 text-sm">
+          {#each ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'] as day}
+            <div class="text-slate-500 font-medium text-center">{day}</div>
+          {/each}
+          {#each Array.from({ length: (new Date(y, m - 1, 1).getDay() + 6) % 7 }) as _}
+            <div></div>
+          {/each}
+          {#each Array.from({ length: daysInMonth }, (_, i) => i + 1) as day}
+            {@const dayAbsences = absencesAll.filter((a) => {
+              const d = a.debut instanceof Date ? a.debut : new Date(a.debut as number);
+              const e = a.fin instanceof Date ? a.fin : new Date(a.fin as number);
+              const dayStart = new Date(y, m - 1, day, 0, 0, 0);
+              const dayEnd = new Date(y, m - 1, day, 23, 59, 59);
+              return d <= dayEnd && e >= dayStart;
+            })}
+            <div
+              class="min-h-14 p-1 rounded border border-slate-100 {dayAbsences.length
+                ? 'bg-amber-50 border-amber-200'
+                : ''}"
+            >
+              <span class="text-slate-600">{day}</span>
+              {#each dayAbsences as abs}
+                <div class="text-xs text-amber-800 truncate" title={abs.titre}>{abs.titre}</div>
+              {/each}
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
+  </main>
+</div>
