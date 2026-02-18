@@ -248,6 +248,19 @@ Adapte `mondomaine` et `badgeuse.promoveo.fr` à ton domaine et à ton chemin Do
 
 ---
 
+## Lancer l’app en prod (adapter-node)
+
+Avec **adapter-node**, il ne faut **pas** utiliser `npm run preview` (réservé à d’autres adapters). Pour un run type prod en local ou sur le VPS :
+
+1. **Build** : `npm run build`
+2. **Lancer** : `npm run start` (ou `node -r dotenv/config build/index.js`)
+3. Lancer depuis la **racine du projet** (là où se trouvent `package.json`, `.env` et le dossier `build/`), pour que le `.env` soit chargé et que `DATABASE_URL=./badgeuse.db` pointe au bon endroit.
+4. Ouvrir **http://localhost:3123** (ou le `PORT` défini dans ton `.env`).
+
+Si tu vois « connection failed » : vérifier dans le **terminal** le message affiché au démarrage. Tu dois voir `Listening on http://0.0.0.0:3123`. Si le process plante avant, l’erreur s’affiche là (ex. `Invalid ORIGIN`, problème sql.js, etc.).
+
+---
+
 ## Variable ORIGIN (SvelteKit en prod)
 
 Pour que les form actions (ex. formulaire de login) ne renvoient pas **403 Forbidden** en production, SvelteKit doit connaître l’URL de base du site (vérification CSRF).

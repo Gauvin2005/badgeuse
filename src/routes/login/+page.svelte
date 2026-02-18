@@ -6,9 +6,14 @@
 
   function handleEnhance() {
     networkError = null;
-    return ({ result, update }: { result: unknown; update: (opts?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void> }) => {
+    return async ({
+      update,
+    }: {
+      result: unknown;
+      update: (opts?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void>;
+    }) => {
       try {
-        update();
+        await update();
       } catch {
         networkError = 'Erreur de connexion. Réessayez.';
       }
