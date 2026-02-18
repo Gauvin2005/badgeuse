@@ -6,6 +6,10 @@ const config = {
   preprocess: vitePreprocess(),
   kit: {
     adapter: adapter(),
+    csrf: {
+      // Désactive la vérification Origin (sinon 403 en prod si proxy enlève l’en-tête ou ORIGIN incorrect)
+      trustedOrigins: ['*'],
+    },
   },
 };
 

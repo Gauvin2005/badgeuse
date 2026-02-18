@@ -2,6 +2,18 @@
   import { enhance } from '$app/forms';
 
   let { form } = $props();
+  let networkError = $state<string | null>(null);
+
+  function handleEnhance() {
+    networkError = null;
+    return ({ result, update }: { result: unknown; update: (opts?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void> }) => {
+      try {
+        update();
+      } catch {
+        networkError = 'Erreur de connexion. Réessayez.';
+      }
+    };
+  }
 </script>
 
 <div class="min-h-screen flex items-center justify-center bg-slate-100 p-4">
@@ -11,7 +23,7 @@
 
     <form
       method="POST"
-      use:enhance={() => ({ update: () => {} })}
+      use:enhance={handleEnhance}
       class="space-y-4"
     >
       <input
@@ -22,7 +34,9 @@
         class="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
         autofocus
       />
-      {#if form?.error}
+      {#if networkError}
+        <p class="text-red-600 text-sm">{networkError}</p>
+      {:else if form?.error}
         <p class="text-red-600 text-sm">{form.error}</p>
       {/if}
       <button
