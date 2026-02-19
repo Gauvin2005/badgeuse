@@ -22,20 +22,25 @@
     return `${fmtDate(d)} ${fmtTime(d)}`;
   }
 
+  function toMoisKey(d: Date) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }
   const prevMois = $derived.by(() => {
     const [y, m] = mois.split('-').map(Number);
     const d = new Date(y, m - 2, 1);
-    return d.toISOString().slice(0, 7);
+    return toMoisKey(d);
   });
   const nextMois = $derived.by(() => {
     const [y, m] = mois.split('-').map(Number);
     const d = new Date(y, m, 1);
-    return d.toISOString().slice(0, 7);
+    return toMoisKey(d);
   });
   const moisLabel = $derived(
     new Date(mois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
   );
-  const moisAujourdhui = $derived(new Date().toISOString().slice(0, 7));
+  const moisAujourdhui = $derived(toMoisKey(new Date()));
 
   let showAbsenceForm = $state(false);
 </script>
