@@ -90,6 +90,11 @@
     return total;
   });
 
+  const totalBrutMinutes = $derived.by(() => {
+    const list = Array.isArray(pointages) ? pointages : [];
+    return list.reduce((acc, p) => acc + (p.dureeMinutes ?? 0), 0);
+  });
+
   const moisLabelCourt = $derived(
     new Date(mois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }).replace(' ', '-')
   );
@@ -105,6 +110,11 @@
   function fmtTime(d: Date | number) {
     const x = d instanceof Date ? d : new Date(d);
     return x.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+  function sameDay(a: Date | number, b: Date | number) {
+    const x = a instanceof Date ? a : new Date(a);
+    const y = b instanceof Date ? b : new Date(b);
+    return x.getFullYear() === y.getFullYear() && x.getMonth() === y.getMonth() && x.getDate() === y.getDate();
   }
   function fmtDateTime(d: Date | number) {
     return `${fmtDate(d)} ${fmtTime(d)}`;
@@ -241,6 +251,11 @@
           >
             <span class="font-medium text-slate-800">Heures effectuées ce mois-ci ({moisLabelCourt}) :</span>
             {fmtDuree(heuresEffectueesMinutes)}
+            <span class="text-slate-500 text-xs ml-1">(plages légales)</span>
+          </span>
+          <span class="bg-slate-50 px-3 py-2 rounded-lg border border-slate-200" title="Somme des durées affichées">
+            <span class="font-medium text-slate-800">Total brut :</span>
+            {fmtDuree(totalBrutMinutes)}
           </span>
           <span class="bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
             <span class="font-medium text-slate-800">Heures d'absence ce mois-ci ({moisLabelCourt}) :</span>
@@ -266,7 +281,13 @@
                 <tr class="border-b border-slate-100">
                   <td class="py-2 pr-4">{fmtDate(p.arrivee)}</td>
                   <td class="py-2 pr-4">{fmtTime(p.arrivee)}</td>
-                  <td class="py-2 pr-4">{p.depart ? fmtTime(p.depart) : '—'}</td>
+                  <td class="py-2 pr-4">
+                    {#if p.depart}
+                      {sameDay(p.arrivee, p.depart) ? fmtTime(p.depart) : fmtDate(p.depart) + ' ' + fmtTime(p.depart)}
+                    {:else}
+                      —
+                    {/if}
+                  </td>
                   <td class="py-2">
                     {p.dureeMinutes != null ? `${Math.floor(p.dureeMinutes / 60)}h${String(p.dureeMinutes % 60).padStart(2, '0')}` : '—'}
                   </td>

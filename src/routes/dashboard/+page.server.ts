@@ -16,6 +16,27 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const monthParam = url.searchParams.get('mois') ?? new Date().toISOString().slice(0, 7);
   const { start, end } = getMonthRange(monthParam);
 
+  if (locals.role === 'employe') {
+    const open = await db
+      .select()
+      .from(pointages)
+      .where(and(eq(pointages.role, 'employe'), sql`${pointages.depart} IS NULL`))
+      .limit(1);
+    const openPointage = open[0] ?? null;
+    if (openPointage) {
+      const arr = openPointage.arrivee instanceof Date ? openPointage.arrivee : new Date(openPointage.arrivee as number);
+      // 17h00 jour d'arrivée (heure serveur) — en prod, lancer Node avec TZ=Europe/Paris
+      const dayEnd17 = new Date(arr.getFullYear(), arr.getMonth(), arr.getDate(), 17, 0, 0, 0);
+      if (Date.now() >= dayEnd17.getTime()) {
+        const dureeMinutes = Math.round((dayEnd17.getTime() - arr.getTime()) / 60000);
+        await db
+          .update(pointages)
+          .set({ depart: dayEnd17, dureeMinutes })
+          .where(eq(pointages.id, openPointage.id));
+      }
+    }
+  }
+
   const pointagesList = await db
     .select()
     .from(pointages)
