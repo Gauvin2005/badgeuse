@@ -48,7 +48,7 @@
         const apremStart = new Date(y, mo, day, 13, 30, 0, 0).getTime();
         const apremEnd = new Date(y, mo, day, 17, 0, 0, 0).getTime();
         const seg = (s: number, e: number) =>
-          Math.max(0, Math.floor((Math.min(e, d) - Math.max(s, a)) / 60000));
+          Math.max(0, Math.round((Math.min(e, d) - Math.max(s, a)) / 60000));
         total += seg(matinStart, matinEnd) + seg(apremStart, apremEnd);
       }
       cursor.setDate(cursor.getDate() + 1);
