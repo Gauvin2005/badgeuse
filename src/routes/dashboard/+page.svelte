@@ -67,7 +67,17 @@
           <p class="text-slate-600 mb-2">
             Pointé depuis {fmtDateTime(enCours.arrivee)}
           </p>
-          <form method="POST" action="?/depointer" use:enhance>
+          <form
+            method="POST"
+            action="?/depointer"
+            use:enhance
+            onsubmit={(e) => {
+              const form = e.currentTarget;
+              const input = form.querySelector<HTMLInputElement>('input[name="departAt"]');
+              if (input) input.value = new Date().toISOString();
+            }}
+          >
+            <input type="hidden" name="departAt" value="" />
             <button
               type="submit"
               class="px-6 py-3 bg-amber-500 text-white font-medium rounded-lg hover:bg-amber-600"
@@ -76,7 +86,17 @@
             </button>
           </form>
         {:else}
-          <form method="POST" action="?/pointer" use:enhance>
+          <form
+            method="POST"
+            action="?/pointer"
+            use:enhance
+            onsubmit={(e) => {
+              const form = e.currentTarget;
+              const input = form.querySelector<HTMLInputElement>('input[name="arriveeAt"]');
+              if (input) input.value = new Date().toISOString();
+            }}
+          >
+            <input type="hidden" name="arriveeAt" value="" />
             <button
               type="submit"
               class="px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700"

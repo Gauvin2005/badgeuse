@@ -65,16 +65,26 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 };
 
 export const actions: Actions = {
-  pointer: async ({ locals }) => {
+  pointer: async ({ locals, request }) => {
     if (locals.role !== 'employe') return { success: false };
+    const data = await request.formData();
+    const arriveeAt = data.get('arriveeAt');
+    const arrivee =
+      typeof arriveeAt === 'string' && arriveeAt ? new Date(arriveeAt) : new Date();
+    if (Number.isNaN(arrivee.getTime())) return { success: false };
     await db.insert(pointages).values({
       role: 'employe',
-      arrivee: new Date(),
+      arrivee,
     });
     return { success: true };
   },
-  depointer: async ({ locals }) => {
+  depointer: async ({ locals, request }) => {
     if (locals.role !== 'employe') return { success: false };
+    const data = await request.formData();
+    const departAt = data.get('departAt');
+    const depart =
+      typeof departAt === 'string' && departAt ? new Date(departAt) : new Date();
+    if (Number.isNaN(depart.getTime())) return { success: false };
     const open = await db
       .select()
       .from(pointages)
@@ -82,7 +92,6 @@ export const actions: Actions = {
       .limit(1);
     const p = open[0];
     if (!p) return { success: false };
-    const depart = new Date();
     const arrivee = p.arrivee instanceof Date ? p.arrivee : new Date(p.arrivee as number);
     const dureeMinutes = Math.round((depart.getTime() - arrivee.getTime()) / 60000);
     await db
