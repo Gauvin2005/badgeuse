@@ -183,18 +183,26 @@
         <form
           method="POST"
           action="?/absence"
-          use:enhance={() => {
+          use:enhance={({ form }) => {
+            const debutLocal = form.querySelector<HTMLInputElement>('#debut-local');
+            const finLocal = form.querySelector<HTMLInputElement>('#fin-local');
+            const debutHidden = form.querySelector<HTMLInputElement>('input[name="debut"]');
+            const finHidden = form.querySelector<HTMLInputElement>('input[name="fin"]');
+            if (debutLocal?.value && debutHidden) debutHidden.value = new Date(debutLocal.value).toISOString();
+            if (finLocal?.value && finHidden) finHidden.value = new Date(finLocal.value).toISOString();
             showAbsenceForm = false;
             return {};
           }}
           class="mb-6 p-4 bg-slate-50 rounded-lg space-y-3"
         >
+          <input type="hidden" name="debut" value="" />
+          <input type="hidden" name="fin" value="" />
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-sm text-slate-600 mb-1">Début</label>
               <input
+                id="debut-local"
                 type="datetime-local"
-                name="debut"
                 required
                 class="w-full px-3 py-2 border border-slate-300 rounded"
               />
@@ -202,8 +210,8 @@
             <div>
               <label class="block text-sm text-slate-600 mb-1">Fin</label>
               <input
+                id="fin-local"
                 type="datetime-local"
-                name="fin"
                 required
                 class="w-full px-3 py-2 border border-slate-300 rounded"
               />
