@@ -3,18 +3,68 @@ import { eq, and, gte, lte, sql, desc } from 'drizzle-orm';
 import { db, pointages, absences } from '$lib/db';
 import type { PageServerLoad, Actions } from './$types';
 
-function getMonthRange(month: string): { start: Date; end: Date } {
-  const [y, m] = month.split('-').map(Number);
-  const start = new Date(y, m - 1, 1, 0, 0, 0);
-  const end = new Date(y, m, 0, 23, 59, 59);
-  return { start, end };
+export type VuePeriod = 'jour' | 'semaine' | 'mois' | 'annee';
+
+function parseDateParam(s: string | null): Date {
+  if (!s) return new Date();
+  const [y, m, d] = s.split('-').map(Number);
+  if (!y || !m) return new Date();
+  const date = new Date(y, (m ?? 1) - 1, d ?? 1);
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+/** Retourne start, end et date normalisée (YYYY-MM-DD) pour la période. */
+function getRange(
+  vue: VuePeriod,
+  date: Date
+): { start: Date; end: Date; dateKey: string } {
+  const y = date.getFullYear();
+  const m = date.getMonth();
+  const d = date.getDate();
+
+  if (vue === 'jour') {
+    const start = new Date(y, m, d, 0, 0, 0);
+    const end = new Date(y, m, d, 23, 59, 59);
+    const dateKey = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    return { start, end, dateKey };
+  }
+
+  if (vue === 'semaine') {
+    const dayOfWeek = (date.getDay() + 6) % 7; // 0 = lundi
+    const lundi = new Date(date);
+    lundi.setDate(date.getDate() - dayOfWeek);
+    const ly = lundi.getFullYear();
+    const lm = lundi.getMonth();
+    const ld = lundi.getDate();
+    const start = new Date(ly, lm, ld, 0, 0, 0);
+    const dimanche = new Date(start);
+    dimanche.setDate(dimanche.getDate() + 6);
+    const end = new Date(dimanche.getFullYear(), dimanche.getMonth(), dimanche.getDate(), 23, 59, 59);
+    const dateKey = `${ly}-${String(lm + 1).padStart(2, '0')}-${String(ld).padStart(2, '0')}`;
+    return { start, end, dateKey };
+  }
+
+  if (vue === 'mois') {
+    const start = new Date(y, m, 1, 0, 0, 0);
+    const end = new Date(y, m + 1, 0, 23, 59, 59);
+    const dateKey = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    return { start, end, dateKey };
+  }
+
+  // annee
+  const start = new Date(y, 0, 1, 0, 0, 0);
+  const end = new Date(y, 11, 31, 23, 59, 59);
+  const dateKey = `${y}-01-01`;
+  return { start, end, dateKey };
 }
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   if (!locals.role) throw redirect(302, '/login');
 
-  const monthParam = url.searchParams.get('mois') ?? new Date().toISOString().slice(0, 7);
-  const { start, end } = getMonthRange(monthParam);
+  const vue = (url.searchParams.get('vue') ?? 'mois') as VuePeriod;
+  const dateParam = url.searchParams.get('date');
+  const date = parseDateParam(dateParam ?? null);
+  const { start, end, dateKey } = getRange(vue, date);
 
   if (locals.role === 'employe') {
     const open = await db
@@ -81,7 +131,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     absences: absencesFiltered,
     absencesAll: absencesList,
     enCours,
-    mois: monthParam,
+    vue,
+    dateKey,
+    periodStart: start.getTime(),
+    periodEnd: end.getTime(),
   };
 };
 

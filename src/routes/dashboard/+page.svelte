@@ -25,7 +25,10 @@
   const absences = $derived(data.absences);
   const absencesAll = $derived(data.absencesAll ?? data.absences);
   const enCours = $derived(data.enCours);
-  const mois = $derived(data.mois);
+  const vue = $derived(data.vue ?? 'mois');
+  const dateKey = $derived(data.dateKey ?? '');
+  const periodStart = $derived(data.periodStart ?? 0);
+  const periodEnd = $derived(data.periodEnd ?? 0);
 
   /** Plages légales 8h30-12h et 13h30-17h, L-V — calcul côté client = timezone utilisateur. */
   function minutesDansPlagesLegales(arrivee: Date | number, depart: Date | number): number {
@@ -56,10 +59,6 @@
     return total;
   }
 
-  const [moisY, moisM] = $derived(mois.split('-').map(Number));
-  const moisStart = $derived(new Date(moisY, moisM - 1, 1).getTime());
-  const moisEnd = $derived(new Date(moisY, moisM, 0, 23, 59, 59).getTime());
-
   const heuresEffectueesMinutes = $derived.by(() => {
     const list = Array.isArray(pointages) ? pointages : [];
     let total = 0;
@@ -70,8 +69,8 @@
       const at = arr.getTime();
       const dt = dep.getTime();
       if (Number.isNaN(at) || Number.isNaN(dt) || dt <= at) continue;
-      if (dt < moisStart || at > moisEnd) continue;
-      total += minutesDansPlagesLegales(Math.max(at, moisStart), Math.min(dt, moisEnd));
+      if (dt < periodStart || at > periodEnd) continue;
+      total += minutesDansPlagesLegales(Math.max(at, periodStart), Math.min(dt, periodEnd));
     }
     return total;
   });
@@ -83,8 +82,8 @@
       const deb = (a.debut instanceof Date ? a.debut : new Date(a.debut as string | number)).getTime();
       const fin = (a.fin instanceof Date ? a.fin : new Date(a.fin as string | number)).getTime();
       if (Number.isNaN(deb) || Number.isNaN(fin)) continue;
-      const overlapStart = Math.max(deb, moisStart);
-      const overlapEnd = Math.min(fin, moisEnd);
+      const overlapStart = Math.max(deb, periodStart);
+      const overlapEnd = Math.min(fin, periodEnd);
       if (overlapEnd > overlapStart) total += Math.floor((overlapEnd - overlapStart) / 60000);
     }
     return total;
@@ -95,9 +94,61 @@
     return list.reduce((acc, p) => acc + (p.dureeMinutes ?? 0), 0);
   });
 
-  const moisLabelCourt = $derived(
-    new Date(mois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }).replace(' ', '-')
-  );
+  const [dkY, dkM, dkD] = $derived(dateKey ? dateKey.split('-').map(Number) : [0, 0, 0]);
+  const periodLabel = $derived.by(() => {
+    if (!dateKey) return '';
+    if (vue === 'jour') return new Date(dkY, dkM - 1, dkD).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    if (vue === 'semaine') {
+      const lundi = new Date(dkY, dkM - 1, dkD);
+      const dimanche = new Date(lundi);
+      dimanche.setDate(dimanche.getDate() + 6);
+      return `Semaine du ${lundi.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} au ${dimanche.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    }
+    if (vue === 'mois') return new Date(dkY, dkM - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    return String(dkY);
+  });
+
+  function addPeriod(v: string, d: string, delta: number): string {
+    const [y, m, day] = d.split('-').map(Number);
+    const date = new Date(y, m - 1, day);
+    if (v === 'jour') date.setDate(date.getDate() + delta);
+    else if (v === 'semaine') date.setDate(date.getDate() + delta * 7);
+    else if (v === 'mois') date.setMonth(date.getMonth() + delta);
+    else date.setFullYear(date.getFullYear() + delta);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  function todayKey(): string {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+  }
+  function weekMondayKey(): string {
+    const n = new Date();
+    const day = (n.getDay() + 6) % 7;
+    n.setDate(n.getDate() - day);
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+  }
+  function thisMonthKey(): string {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-01`;
+  }
+  function thisYearKey(): string {
+    return `${new Date().getFullYear()}-01-01`;
+  }
+
+  const prevDateKey = $derived(addPeriod(vue, dateKey, -1));
+  const nextDateKey = $derived(addPeriod(vue, dateKey, 1));
+  const aujourdhuiHref = $derived.by(() => {
+    const d = vue === 'jour' ? todayKey() : vue === 'semaine' ? weekMondayKey() : vue === 'mois' ? thisMonthKey() : thisYearKey();
+    return `?vue=${vue}&date=${d}`;
+  });
+  const periodLabelShort = $derived.by(() => {
+    if (!dateKey) return '';
+    if (vue === 'jour') return new Date(dkY, dkM - 1, dkD).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+    if (vue === 'semaine') return `S. ${dkD}/${dkM}`;
+    if (vue === 'mois') return new Date(dkY, dkM - 1, 1).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
+    return String(dkY);
+  });
 
   function fmtDuree(minutes: number) {
     return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}`;
@@ -119,26 +170,6 @@
   function fmtDateTime(d: Date | number) {
     return `${fmtDate(d)} ${fmtTime(d)}`;
   }
-
-  function toMoisKey(d: Date) {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    return `${y}-${m}`;
-  }
-  const prevMois = $derived.by(() => {
-    const [y, m] = mois.split('-').map(Number);
-    const d = new Date(y, m - 2, 1);
-    return toMoisKey(d);
-  });
-  const nextMois = $derived.by(() => {
-    const [y, m] = mois.split('-').map(Number);
-    const d = new Date(y, m, 1);
-    return toMoisKey(d);
-  });
-  const moisLabel = $derived(
-    new Date(mois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
-  );
-  const moisAujourdhui = $derived(toMoisKey(new Date()));
 
   let showAbsenceForm = $state(false);
 </script>
@@ -217,27 +248,18 @@
       </section>
     {/if}
 
-    <!-- Filtre mois (patron + lien employe) -->
-    <section class="flex items-center gap-4 flex-wrap">
-      <span class="text-slate-700 font-medium">{moisLabel}</span>
-      <a
-        href="?mois={moisAujourdhui}"
-        class="px-3 py-1 rounded bg-slate-200 hover:bg-slate-300 text-sm"
-      >
-        Aujourd'hui
-      </a>
-      <a
-        href="?mois={prevMois}"
-        class="px-3 py-1 rounded bg-slate-200 hover:bg-slate-300 text-sm"
-      >
-        ← Mois précédent
-      </a>
-      <a
-        href="?mois={nextMois}"
-        class="px-3 py-1 rounded bg-slate-200 hover:bg-slate-300 text-sm"
-      >
-        Mois suivant →
-      </a>
+    <!-- Vue + période -->
+    <section class="flex flex-wrap items-center gap-3">
+      <div class="flex rounded-lg bg-slate-100 p-1">
+        <a href="?vue=jour&date={dateKey || todayKey()}" class="px-3 py-1.5 rounded text-sm font-medium {vue === 'jour' ? 'bg-white shadow text-slate-800' : 'text-slate-600 hover:text-slate-800'}">Jour</a>
+        <a href="?vue=semaine&date={dateKey || weekMondayKey()}" class="px-3 py-1.5 rounded text-sm font-medium {vue === 'semaine' ? 'bg-white shadow text-slate-800' : 'text-slate-600 hover:text-slate-800'}">Semaine</a>
+        <a href="?vue=mois&date={dateKey || thisMonthKey()}" class="px-3 py-1.5 rounded text-sm font-medium {vue === 'mois' ? 'bg-white shadow text-slate-800' : 'text-slate-600 hover:text-slate-800'}">Mois</a>
+        <a href="?vue=annee&date={dateKey || thisYearKey()}" class="px-3 py-1.5 rounded text-sm font-medium {vue === 'annee' ? 'bg-white shadow text-slate-800' : 'text-slate-600 hover:text-slate-800'}">Année</a>
+      </div>
+      <span class="text-slate-700 font-medium">{periodLabel}</span>
+      <a href={aujourdhuiHref} class="px-3 py-1 rounded bg-slate-200 hover:bg-slate-300 text-sm">Aujourd'hui</a>
+      <a href="?vue={vue}&date={prevDateKey}" class="px-3 py-1 rounded bg-slate-200 hover:bg-slate-300 text-sm">← Préc.</a>
+      <a href="?vue={vue}&date={nextDateKey}" class="px-3 py-1 rounded bg-slate-200 hover:bg-slate-300 text-sm">Suiv. →</a>
     </section>
 
     <!-- Pointages -->
@@ -249,7 +271,7 @@
             class="bg-slate-100 px-3 py-2 rounded-lg"
             title="8h30-12h00 et 13h30-17h00, Lundi à Vendredi"
           >
-            <span class="font-medium text-slate-800">Heures effectuées ce mois-ci ({moisLabelCourt}) :</span>
+            <span class="font-medium text-slate-800">Heures effectuées ({periodLabelShort}) :</span>
             {fmtDuree(heuresEffectueesMinutes)}
             <span class="text-slate-500 text-xs ml-1">(plages légales)</span>
           </span>
@@ -258,7 +280,7 @@
             {fmtDuree(totalBrutMinutes)}
           </span>
           <span class="bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
-            <span class="font-medium text-slate-800">Heures d'absence ce mois-ci ({moisLabelCourt}) :</span>
+            <span class="font-medium text-slate-800">Absences ({periodLabelShort}) :</span>
             {fmtDuree(heuresAbsenceMinutes)}
           </span>
         </div>
@@ -438,8 +460,9 @@
     <!-- Calendrier (liste par jour du mois) -->
     <section class="bg-white rounded-xl shadow p-6">
       <h2 class="text-lg font-semibold text-slate-800 mb-4">Calendrier des absences</h2>
-      {#if mois}
-        {@const [y, m] = mois.split('-').map(Number)}
+      {#if vue === 'mois' && dkY && dkM}
+        {@const y = dkY}
+        {@const m = dkM}
         {@const daysInMonth = new Date(y, m, 0).getDate()}
         <div class="grid grid-cols-7 gap-1 text-sm">
           {#each ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'] as day}
