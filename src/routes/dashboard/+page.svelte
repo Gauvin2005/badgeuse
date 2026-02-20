@@ -1,7 +1,24 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
 
   let { data, form } = $props();
+
+  const isDev = import.meta.env.DEV;
+  let resetLoading = $state(false);
+
+  async function resetDb() {
+    if (!isDev || resetLoading) return;
+    resetLoading = true;
+    try {
+      const r = await fetch('/api/dev/reset-db', { method: 'POST' });
+      const j = await r.json();
+      if (j?.ok) await invalidateAll();
+      else console.error(j?.error ?? 'Erreur reset BDD');
+    } finally {
+      resetLoading = false;
+    }
+  }
 
   const role = $derived(data.role);
   const pointages = $derived(data.pointages);
@@ -9,6 +26,77 @@
   const absencesAll = $derived(data.absencesAll ?? data.absences);
   const enCours = $derived(data.enCours);
   const mois = $derived(data.mois);
+
+  /** Plages légales 8h30-12h et 13h30-17h, L-V — calcul côté client = timezone utilisateur. */
+  function minutesDansPlagesLegales(arrivee: Date | number, depart: Date | number): number {
+    const a = (arrivee instanceof Date ? arrivee : new Date(arrivee)).getTime();
+    const d = (depart instanceof Date ? depart : new Date(depart)).getTime();
+    if (Number.isNaN(a) || Number.isNaN(d) || d <= a) return 0;
+    let total = 0;
+    const cursor = new Date(a);
+    cursor.setHours(0, 0, 0, 0);
+    const endDay = new Date(d);
+    endDay.setHours(23, 59, 59, 999);
+    while (cursor <= endDay) {
+      const jour = cursor.getDay();
+      if (jour >= 1 && jour <= 5) {
+        const y = cursor.getFullYear();
+        const mo = cursor.getMonth();
+        const day = cursor.getDate();
+        const matinStart = new Date(y, mo, day, 8, 30, 0, 0).getTime();
+        const matinEnd = new Date(y, mo, day, 12, 0, 0, 0).getTime();
+        const apremStart = new Date(y, mo, day, 13, 30, 0, 0).getTime();
+        const apremEnd = new Date(y, mo, day, 17, 0, 0, 0).getTime();
+        const seg = (s: number, e: number) =>
+          Math.max(0, Math.floor((Math.min(e, d) - Math.max(s, a)) / 60000));
+        total += seg(matinStart, matinEnd) + seg(apremStart, apremEnd);
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return total;
+  }
+
+  const [moisY, moisM] = $derived(mois.split('-').map(Number));
+  const moisStart = $derived(new Date(moisY, moisM - 1, 1).getTime());
+  const moisEnd = $derived(new Date(moisY, moisM, 0, 23, 59, 59).getTime());
+
+  const heuresEffectueesMinutes = $derived.by(() => {
+    const list = Array.isArray(pointages) ? pointages : [];
+    let total = 0;
+    for (const p of list) {
+      if (!p.depart) continue;
+      const arr = p.arrivee instanceof Date ? p.arrivee : new Date(p.arrivee as string | number);
+      const dep = p.depart instanceof Date ? p.depart : new Date(p.depart as string | number);
+      const at = arr.getTime();
+      const dt = dep.getTime();
+      if (Number.isNaN(at) || Number.isNaN(dt) || dt <= at) continue;
+      if (dt < moisStart || at > moisEnd) continue;
+      total += minutesDansPlagesLegales(Math.max(at, moisStart), Math.min(dt, moisEnd));
+    }
+    return total;
+  });
+
+  const heuresAbsenceMinutes = $derived.by(() => {
+    const list = Array.isArray(absences) ? absences : [];
+    let total = 0;
+    for (const a of list) {
+      const deb = (a.debut instanceof Date ? a.debut : new Date(a.debut as string | number)).getTime();
+      const fin = (a.fin instanceof Date ? a.fin : new Date(a.fin as string | number)).getTime();
+      if (Number.isNaN(deb) || Number.isNaN(fin)) continue;
+      const overlapStart = Math.max(deb, moisStart);
+      const overlapEnd = Math.min(fin, moisEnd);
+      if (overlapEnd > overlapStart) total += Math.floor((overlapEnd - overlapStart) / 60000);
+    }
+    return total;
+  });
+
+  const moisLabelCourt = $derived(
+    new Date(mois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }).replace(' ', '-')
+  );
+
+  function fmtDuree(minutes: number) {
+    return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}`;
+  }
 
   function fmtDate(d: Date | number) {
     const x = d instanceof Date ? d : new Date(d);
@@ -53,6 +141,17 @@
   <header class="bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center">
     <h1 class="text-lg font-semibold text-slate-800">Badgeuse</h1>
     <div class="flex items-center gap-4">
+      {#if isDev}
+        <button
+          type="button"
+          onclick={resetDb}
+          disabled={resetLoading}
+          class="text-sm px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50"
+          title="Vider pointages et absences (dev uniquement)"
+        >
+          {resetLoading ? '…' : 'Reset BDD'}
+        </button>
+      {/if}
       <span class="text-slate-600 text-sm capitalize">{role}</span>
       <a href="/logout" class="text-slate-500 hover:text-slate-700 text-sm">Déconnexion</a>
     </div>
@@ -133,7 +232,22 @@
 
     <!-- Pointages -->
     <section class="bg-white rounded-xl shadow p-6">
-      <h2 class="text-lg font-semibold text-slate-800 mb-4">Pointages</h2>
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+        <h2 class="text-lg font-semibold text-slate-800">Pointages</h2>
+        <div class="flex flex-wrap gap-3 text-sm text-slate-600">
+          <span
+            class="bg-slate-100 px-3 py-2 rounded-lg"
+            title="8h30-12h00 et 13h30-17h00, Lundi à Vendredi"
+          >
+            <span class="font-medium text-slate-800">Heures effectuées ce mois-ci ({moisLabelCourt}) :</span>
+            {fmtDuree(heuresEffectueesMinutes)}
+          </span>
+          <span class="bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+            <span class="font-medium text-slate-800">Heures d'absence ce mois-ci ({moisLabelCourt}) :</span>
+            {fmtDuree(heuresAbsenceMinutes)}
+          </span>
+        </div>
+      </div>
       {#if pointages.length === 0}
         <p class="text-slate-500">Aucun pointage sur cette période.</p>
       {:else}
